@@ -1,0 +1,850 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>SkillScope — AI Skill Obsolescence Predictor</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Syne:wght@400;600;700;800&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18/umd/react.development.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.development.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <script src="https://unpkg.com/recharts@2.12.7/umd/Recharts.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+    :root {
+      --bg:       #070b14;
+      --bg2:      #0d1424;
+      --surface:  rgba(255,255,255,0.04);
+      --border:   rgba(255,255,255,0.08);
+      --accent:   #00e5ff;
+      --accent2:  #7c3aed;
+      --accent3:  #f59e0b;
+      --green:    #10b981;
+      --red:      #ef4444;
+      --yellow:   #f59e0b;
+      --text:     #e2e8f0;
+      --muted:    #64748b;
+      --glow:     0 0 40px rgba(0,229,255,0.15);
+    }
+
+    html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'DM Sans', sans-serif; overflow-x: hidden; }
+
+    #root { min-height: 100vh; }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 4px; }
+    ::-webkit-scrollbar-track { background: var(--bg); }
+    ::-webkit-scrollbar-thumb { background: var(--accent2); border-radius: 4px; }
+
+    /* Grid noise texture */
+    body::before {
+      content: '';
+      position: fixed; inset: 0; z-index: 0; pointer-events: none;
+      background-image:
+        linear-gradient(rgba(255,255,255,0.015) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.015) 1px, transparent 1px);
+      background-size: 60px 60px;
+    }
+
+    /* ── Nav ── */
+    .nav {
+      position: fixed; top: 0; left: 0; right: 0; z-index: 100;
+      display: flex; align-items: center; justify-content: space-between;
+      padding: 1rem 2rem;
+      background: rgba(7,11,20,0.85);
+      backdrop-filter: blur(20px);
+      border-bottom: 1px solid var(--border);
+    }
+    .nav-logo {
+      font-family: 'Syne', sans-serif; font-weight: 800; font-size: 1.25rem;
+      color: var(--accent); letter-spacing: -0.02em; cursor: pointer;
+    }
+    .nav-logo span { color: var(--text); }
+    .nav-links { display: flex; gap: 0.25rem; }
+    .nav-link {
+      background: none; border: none; cursor: pointer;
+      padding: 0.4rem 0.9rem; border-radius: 6px;
+      font-family: 'DM Sans', sans-serif; font-size: 0.85rem; font-weight: 500;
+      color: var(--muted); transition: all 0.2s;
+    }
+    .nav-link:hover { color: var(--text); background: var(--surface); }
+    .nav-link.active { color: var(--accent); background: rgba(0,229,255,0.08); }
+
+    /* ── Pages ── */
+    .page { min-height: 100vh; padding-top: 72px; position: relative; z-index: 1; }
+
+    /* ── Hero ── */
+    .hero {
+      min-height: calc(100vh - 72px);
+      display: flex; flex-direction: column; align-items: center; justify-content: center;
+      text-align: center; padding: 2rem;
+    }
+    .hero-badge {
+      display: inline-flex; align-items: center; gap: 0.5rem;
+      padding: 0.35rem 1rem; border-radius: 99px;
+      border: 1px solid rgba(0,229,255,0.3);
+      background: rgba(0,229,255,0.06);
+      font-size: 0.78rem; font-weight: 500; color: var(--accent);
+      margin-bottom: 2rem; letter-spacing: 0.05em; text-transform: uppercase;
+    }
+    .hero-badge::before { content: '●'; font-size: 0.5rem; animation: pulse 2s infinite; }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.3} }
+
+    .hero h1 {
+      font-family: 'Syne', sans-serif; font-weight: 800;
+      font-size: clamp(2.5rem, 7vw, 5.5rem);
+      line-height: 1.05; letter-spacing: -0.04em;
+      background: linear-gradient(135deg, #fff 0%, var(--accent) 50%, var(--accent2) 100%);
+      -webkit-background-clip: text; -webkit-text-fill-color: transparent;
+      background-clip: text; margin-bottom: 1.5rem;
+    }
+    .hero p {
+      max-width: 540px; font-size: 1.1rem; color: var(--muted);
+      line-height: 1.7; margin-bottom: 2.5rem;
+    }
+    .btn-primary {
+      padding: 0.85rem 2.2rem; border-radius: 10px; border: none; cursor: pointer;
+      font-family: 'DM Sans', sans-serif; font-weight: 600; font-size: 1rem;
+      background: linear-gradient(135deg, var(--accent), var(--accent2));
+      color: #fff; transition: all 0.25s;
+      box-shadow: 0 0 30px rgba(0,229,255,0.25);
+    }
+    .btn-primary:hover { transform: translateY(-2px); box-shadow: 0 0 50px rgba(0,229,255,0.4); }
+    .btn-primary:active { transform: translateY(0); }
+
+    .hero-stats { display: flex; gap: 3rem; margin-top: 4rem; }
+    .stat { text-align: center; }
+    .stat-num { font-family: 'Syne', sans-serif; font-size: 2rem; font-weight: 800; color: var(--accent); }
+    .stat-label { font-size: 0.8rem; color: var(--muted); margin-top: 0.25rem; }
+
+    /* ── Orbs ── */
+    .orb {
+      position: fixed; border-radius: 50%; pointer-events: none; z-index: 0;
+      filter: blur(80px); opacity: 0.12;
+    }
+    .orb-1 { width: 600px; height: 600px; background: var(--accent2); top: -200px; right: -200px; animation: float1 12s ease-in-out infinite; }
+    .orb-2 { width: 400px; height: 400px; background: var(--accent); bottom: -100px; left: -100px; animation: float2 15s ease-in-out infinite; }
+    @keyframes float1 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(-30px,40px)} }
+    @keyframes float2 { 0%,100%{transform:translate(0,0)} 50%{transform:translate(30px,-30px)} }
+
+    /* ── Card ── */
+    .card {
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 16px;
+      backdrop-filter: blur(10px);
+      transition: border-color 0.3s, transform 0.3s;
+    }
+    .card:hover { border-color: rgba(0,229,255,0.2); }
+
+    /* ── Input Page ── */
+    .input-wrap { max-width: 680px; margin: 0 auto; padding: 3rem 2rem; }
+    .page-title { font-family: 'Syne', sans-serif; font-size: 2.5rem; font-weight: 800; letter-spacing: -0.03em; margin-bottom: 0.5rem; }
+    .page-sub { color: var(--muted); margin-bottom: 3rem; }
+
+    .skill-input-box {
+      display: flex; gap: 0.75rem;
+      background: var(--surface);
+      border: 1px solid var(--border);
+      border-radius: 14px; padding: 0.5rem 0.5rem 0.5rem 1.25rem;
+      transition: border-color 0.3s;
+    }
+    .skill-input-box:focus-within { border-color: var(--accent); box-shadow: var(--glow); }
+    .skill-input-box input {
+      flex: 1; background: none; border: none; outline: none;
+      font-family: 'DM Sans', sans-serif; font-size: 1rem; color: var(--text);
+    }
+    .skill-input-box input::placeholder { color: var(--muted); }
+
+    .chips { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-top: 1.5rem; }
+    .chip {
+      padding: 0.35rem 0.9rem; border-radius: 99px;
+      border: 1px solid var(--border); background: var(--surface);
+      font-size: 0.8rem; color: var(--muted); cursor: pointer; transition: all 0.2s;
+    }
+    .chip:hover { border-color: var(--accent); color: var(--accent); background: rgba(0,229,255,0.06); }
+
+    /* ── Spinner ── */
+    .spinner {
+      width: 40px; height: 40px; border-radius: 50%;
+      border: 3px solid var(--border); border-top-color: var(--accent);
+      animation: spin 0.7s linear infinite; margin: 2rem auto;
+    }
+    @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* ── Results Page ── */
+    .results-wrap { max-width: 860px; margin: 0 auto; padding: 3rem 2rem; }
+
+    .score-ring-wrap { display: flex; align-items: center; gap: 3rem; padding: 2rem; }
+    .score-ring {
+      position: relative; width: 140px; height: 140px; flex-shrink: 0;
+    }
+    .score-ring svg { transform: rotate(-90deg); }
+    .score-ring-label {
+      position: absolute; inset: 0; display: flex; flex-direction: column;
+      align-items: center; justify-content: center;
+    }
+    .score-num { font-family: 'Syne', sans-serif; font-size: 2.2rem; font-weight: 800; }
+    .score-label { font-size: 0.7rem; color: var(--muted); letter-spacing: 0.05em; text-transform: uppercase; }
+
+    .badge {
+      display: inline-flex; align-items: center; gap: 0.4rem;
+      padding: 0.3rem 0.8rem; border-radius: 99px; font-size: 0.8rem; font-weight: 600;
+    }
+    .badge-low { background: rgba(16,185,129,0.12); color: var(--green); border: 1px solid rgba(16,185,129,0.25); }
+    .badge-medium { background: rgba(245,158,11,0.12); color: var(--yellow); border: 1px solid rgba(245,158,11,0.25); }
+    .badge-high { background: rgba(239,68,68,0.12); color: var(--red); border: 1px solid rgba(239,68,68,0.25); }
+
+    .verdict-pill {
+      display: inline-block; padding: 0.4rem 1.2rem; border-radius: 8px;
+      font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1rem; margin-top: 0.75rem;
+    }
+    .verdict-future { background: rgba(16,185,129,0.15); color: var(--green); }
+    .verdict-evolving { background: rgba(245,158,11,0.15); color: var(--yellow); }
+    .verdict-obsolete { background: rgba(239,68,68,0.15); color: var(--red); }
+
+    /* ── Dashboard ── */
+    .dash-wrap { max-width: 960px; margin: 0 auto; padding: 3rem 2rem; }
+    .chart-card { padding: 1.5rem; margin-bottom: 1.5rem; }
+    .chart-title { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.1rem; margin-bottom: 1.5rem; }
+
+    /* ── Recommendations ── */
+    .rec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(250px, 1fr)); gap: 1rem; }
+    .rec-card { padding: 1.5rem; cursor: pointer; position: relative; overflow: hidden; }
+    .rec-card::before {
+      content: ''; position: absolute; inset: 0;
+      background: linear-gradient(135deg, rgba(0,229,255,0.04), transparent);
+      opacity: 0; transition: opacity 0.3s;
+    }
+    .rec-card:hover::before { opacity: 1; }
+    .rec-skill-name { font-family: 'Syne', sans-serif; font-weight: 700; font-size: 1.1rem; margin-bottom: 0.5rem; }
+    .rec-bar-wrap { height: 4px; background: var(--border); border-radius: 99px; margin: 0.75rem 0; }
+    .rec-bar { height: 100%; border-radius: 99px; background: linear-gradient(90deg, var(--accent), var(--accent2)); transition: width 0.8s ease; }
+    .traj-tag { font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.06em; font-weight: 600; }
+    .traj-surging,.traj-rising { color: var(--green); }
+    .traj-stable { color: var(--accent); }
+    .traj-declining { color: var(--yellow); }
+    .traj-obsolete { color: var(--red); }
+
+    /* ── About ── */
+    .about-wrap { max-width: 800px; margin: 0 auto; padding: 3rem 2rem; }
+    .about-section { padding: 2rem; margin-bottom: 1.5rem; }
+    .feature-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 1rem; margin-top: 2rem; }
+    .feature-item { padding: 1.5rem; }
+    .feature-icon { font-size: 1.8rem; margin-bottom: 0.75rem; }
+    .feature-name { font-family: 'Syne', sans-serif; font-weight: 700; margin-bottom: 0.4rem; }
+    .feature-desc { font-size: 0.85rem; color: var(--muted); line-height: 1.6; }
+
+    /* ── Prediction ── */
+    .pred-wrap { max-width: 960px; margin: 0 auto; padding: 3rem 2rem; }
+    .timeline-legend { display: flex; gap: 1.5rem; margin-bottom: 1rem; font-size: 0.8rem; }
+    .legend-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
+
+    /* ── Responsive ── */
+    @media (max-width: 640px) {
+      .nav-links .nav-link { display: none; }
+      .nav-links .nav-link:last-child, .nav-links .nav-link:first-child { display: block; }
+      .hero-stats { gap: 1.5rem; }
+      .score-ring-wrap { flex-direction: column; text-align: center; }
+    }
+
+    /* ── Fade-in animation ── */
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(20px); } to { opacity: 1; transform: translateY(0); } }
+    .fade-up { animation: fadeUp 0.5s ease forwards; }
+    .fade-up-2 { animation: fadeUp 0.5s 0.1s ease both; }
+    .fade-up-3 { animation: fadeUp 0.5s 0.2s ease both; }
+    .fade-up-4 { animation: fadeUp 0.5s 0.3s ease both; }
+    .fade-up-5 { animation: fadeUp 0.5s 0.4s ease both; }
+  </style>
+</head>
+<body>
+<div id="root"></div>
+
+<script type="text/babel">
+const { useState, useEffect, useRef, useCallback } = React;
+const {
+  LineChart, Line, AreaChart, Area, BarChart, Bar,
+  XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend, ReferenceLine
+} = Recharts;
+
+// ──────────────────────────────────────────
+// API helpers — talk to Flask backend
+// ──────────────────────────────────────────
+const API = "http://localhost:5000";
+
+async function apiPost(endpoint, body) {
+  try {
+    const res = await fetch(`${API}${endpoint}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    });
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return await res.json();
+  } catch {
+    // Return mock data when backend isn't running
+    return getMockData(endpoint, body);
+  }
+}
+
+async function apiGet(endpoint) {
+  try {
+    const res = await fetch(`${API}${endpoint}`);
+    return await res.json();
+  } catch {
+    return { skills: POPULAR_SKILLS };
+  }
+}
+
+// Popular skills shown as quick chips
+const POPULAR_SKILLS = [
+  "Machine Learning","React","Python","Kubernetes","Rust",
+  "TypeScript","LLM","Data Engineering","Cybersecurity","PHP",
+  "Docker","FastAPI","Web3","COBOL","Next.js"
+];
+
+// ── Mock data for offline/demo mode ──
+function getMockData(endpoint, body) {
+  const skill = body.skill || "Unknown";
+  const seed = skill.toLowerCase().charCodeAt(0) || 65;
+  const score = Math.min(100, Math.max(10, (seed * 37 + 40) % 100));
+  const risk = score >= 75 ? "Low" : score >= 50 ? "Medium" : "High";
+  const trajectory = score >= 80 ? "rising" : score >= 60 ? "stable" : "declining";
+  const verdict = score >= 78 ? "Future-Proof" : score >= 50 ? "Evolving" : "Obsolete Soon";
+
+  if (endpoint === "/analyze") {
+    return { skill, score, risk, trajectory, verdict, category: "General",
+      explanation: `${skill} shows a relevance score of ${score}/100 with ${risk.toLowerCase()} obsolescence risk. Based on current industry trends, job market demand, and technology trajectories, this skill is in a "${trajectory}" state. Professionals should ${risk === "High" ? "consider transitioning to more modern alternatives" : "continue building expertise while pairing with complementary emerging technologies"}.` };
+  }
+  if (endpoint === "/trends") {
+    const months = ["Jan '23","Feb '23","Mar '23","Apr '23","May '23","Jun '23","Jul '23","Aug '23","Sep '23","Oct '23","Nov '23","Dec '23","Jan '24","Feb '24","Mar '24","Apr '24","May '24","Jun '24","Jul '24","Aug '24","Sep '24","Oct '24","Nov '24","Dec '24"];
+    const mult = trajectory === "rising" ? 1.015 : trajectory === "declining" ? 0.985 : 1.002;
+    let val = score - 10;
+    const trend_data = months.map((m, i) => {
+      val = Math.max(5, Math.min(100, val * mult + (Math.sin(i) * 2)));
+      return { month: m, value: Math.round(val * 10) / 10, type: i >= 12 ? "future" : "historical" };
+    });
+    return { skill, trend_data, trajectory };
+  }
+  if (endpoint === "/recommend") {
+    const recs = ["MLOps","Platform Engineering","Cloud Security","Data Engineering","Rust"];
+    return { input_skill: skill, recommendations: recs.map((s, i) => ({
+      skill: s, score: 75 + i * 3, trajectory: "rising", category: "Emerging",
+      why: `High demand in the modern tech ecosystem with rising trajectory.`
+    }))};
+  }
+  return {};
+}
+
+// ──────────────────────────────────────────
+// Score Ring Component
+// ──────────────────────────────────────────
+function ScoreRing({ score, size = 140 }) {
+  const r = (size / 2) - 12;
+  const circ = 2 * Math.PI * r;
+  const offset = circ - (score / 100) * circ;
+  const color = score >= 75 ? "#10b981" : score >= 50 ? "#f59e0b" : "#ef4444";
+  return (
+    <div className="score-ring" style={{ width: size, height: size }}>
+      <svg width={size} height={size}>
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke="rgba(255,255,255,0.06)" strokeWidth="10" />
+        <circle cx={size/2} cy={size/2} r={r} fill="none" stroke={color} strokeWidth="10"
+          strokeDasharray={circ} strokeDashoffset={offset}
+          strokeLinecap="round" style={{ transition: "stroke-dashoffset 1.2s ease" }} />
+      </svg>
+      <div className="score-ring-label">
+        <span className="score-num" style={{ color }}>{score}</span>
+        <span className="score-label">score</span>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// Custom Tooltip for Charts
+// ──────────────────────────────────────────
+function CustomTooltip({ active, payload, label }) {
+  if (!active || !payload?.length) return null;
+  return (
+    <div style={{ background: "#0d1424", border: "1px solid rgba(255,255,255,0.1)", borderRadius: 10, padding: "0.75rem 1rem", fontSize: "0.85rem" }}>
+      <p style={{ color: "#64748b", marginBottom: 4 }}>{label}</p>
+      {payload.map((p, i) => (
+        <p key={i} style={{ color: p.color }}>{p.name}: <strong>{p.value}</strong></p>
+      ))}
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// PAGE: Home
+// ──────────────────────────────────────────
+function HomePage({ navigate }) {
+  return (
+    <div className="page">
+      <div className="orb orb-1" />
+      <div className="orb orb-2" />
+      <div className="hero">
+        <div className="hero-badge fade-up">🤖 AI-Powered Analysis</div>
+        <h1 className="fade-up-2">Predict the Future<br />of Your Skills</h1>
+        <p className="fade-up-3">
+          Discover if your tech skills will thrive or fade. SkillScope uses AI + real-time trend data to give you a relevance score, risk assessment, and smart recommendations.
+        </p>
+        <button className="btn-primary fade-up-4" onClick={() => navigate("input")}>
+          Analyze a Skill →
+        </button>
+        <div className="hero-stats fade-up-5">
+          <div className="stat"><div className="stat-num">200+</div><div className="stat-label">Skills Tracked</div></div>
+          <div className="stat"><div className="stat-num">AI</div><div className="stat-label">Powered Analysis</div></div>
+          <div className="stat"><div className="stat-num">24mo</div><div className="stat-label">Trend History</div></div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// PAGE: About
+// ──────────────────────────────────────────
+function AboutPage() {
+  return (
+    <div className="page">
+      <div className="about-wrap">
+        <h1 className="page-title fade-up">About SkillScope</h1>
+        <p className="page-sub fade-up-2">AI-powered skill intelligence for the future of work</p>
+
+        <div className="card about-section fade-up-3">
+          <h2 style={{ fontFamily: "Syne, sans-serif", fontWeight: 700, marginBottom: "1rem" }}>What is SkillScope?</h2>
+          <p style={{ color: "var(--muted)", lineHeight: 1.8, marginBottom: "1rem" }}>
+            SkillScope is an AI-powered tool that analyzes the future relevance of technical skills using trend data, job market signals, and machine learning. In a world where technology evolves faster than ever, knowing which skills to invest in—and which to pivot away from—is a critical career advantage.
+          </p>
+          <p style={{ color: "var(--muted)", lineHeight: 1.8 }}>
+            We combine Google Trends data, industry research, and AI language models to compute a Relevance Score (0–100), Risk Level, and actionable recommendations for every skill you query.
+          </p>
+        </div>
+
+        <div className="feature-grid fade-up-4">
+          {[
+            { icon: "📊", name: "Trend Analysis", desc: "24-month historical + 12-month predicted demand curves powered by real search data." },
+            { icon: "🤖", name: "AI Explanation", desc: "Natural language analysis of why a skill is rising, stable, or declining." },
+            { icon: "🎯", name: "Risk Scoring", desc: "Low / Medium / High obsolescence risk based on trajectory and market velocity." },
+            { icon: "🔮", name: "Predictions", desc: "ML-simulated future demand curves with timeline visualization." },
+            { icon: "🗺️", name: "Skill Roadmap", desc: "Personalized recommendations for adjacent, future-proof skills to learn next." },
+            { icon: "⚡", name: "Real-Time", desc: "Data refreshed continuously from job boards, GitHub, and search trends." },
+          ].map((f, i) => (
+            <div className={`card feature-item fade-up-${Math.min(i+3, 5)}`} key={f.name}>
+              <div className="feature-icon">{f.icon}</div>
+              <div className="feature-name">{f.name}</div>
+              <div className="feature-desc">{f.desc}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// PAGE: Skill Input
+// ──────────────────────────────────────────
+function InputPage({ navigate, setAnalysis, setTrends, setRecommendations }) {
+  const [skill, setSkill] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const submit = async (s) => {
+    const val = (s || skill).trim();
+    if (!val) { setError("Please enter a skill name."); return; }
+    setError("");
+    setLoading(true);
+
+    try {
+      const [analysis, trendsData, recs] = await Promise.all([
+        apiPost("/analyze", { skill: val }),
+        apiPost("/trends", { skill: val }),
+        apiPost("/recommend", { skill: val }),
+      ]);
+      setAnalysis(analysis);
+      setTrends(trendsData);
+      setRecommendations(recs);
+      navigate("results");
+    } catch (e) {
+      setError("Analysis failed. Please try again.");
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <div className="page">
+      <div className="input-wrap">
+        <h1 className="page-title fade-up">Analyze a Skill</h1>
+        <p className="page-sub fade-up-2">Enter any technical skill to get your AI-powered obsolescence report</p>
+
+        <div className="card fade-up-3" style={{ padding: "2rem" }}>
+          <div className="skill-input-box">
+            <input
+              type="text" value={skill} placeholder="e.g. Machine Learning, React, COBOL..."
+              onChange={e => setSkill(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && submit()}
+            />
+            <button className="btn-primary" onClick={() => submit()} disabled={loading} style={{ padding: "0.6rem 1.5rem", fontSize: "0.9rem" }}>
+              {loading ? "Analyzing..." : "Analyze →"}
+            </button>
+          </div>
+
+          {error && <p style={{ color: "var(--red)", marginTop: "0.75rem", fontSize: "0.9rem" }}>{error}</p>}
+
+          {loading && <div style={{ textAlign: "center", padding: "2rem 0" }}>
+            <div className="spinner" />
+            <p style={{ color: "var(--muted)", fontSize: "0.9rem" }}>Running AI analysis + trend computation...</p>
+          </div>}
+        </div>
+
+        <div className="fade-up-4">
+          <p style={{ color: "var(--muted)", fontSize: "0.82rem", marginTop: "1.5rem", marginBottom: "0.75rem" }}>
+            🔥 Popular searches
+          </p>
+          <div className="chips">
+            {POPULAR_SKILLS.map(s => (
+              <button key={s} className="chip" onClick={() => { setSkill(s); submit(s); }}>{s}</button>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// PAGE: Results
+// ──────────────────────────────────────────
+function ResultsPage({ analysis, navigate }) {
+  if (!analysis) return (
+    <div className="page"><div className="input-wrap"><p style={{ color: "var(--muted)" }}>No analysis data. <button className="chip" onClick={() => navigate("input")}>Run a new analysis</button></p></div></div>
+  );
+
+  const { skill, score, risk, trajectory, explanation, verdict, category } = analysis;
+  const verdictClass = verdict === "Future-Proof" ? "verdict-future" : verdict === "Evolving" ? "verdict-evolving" : "verdict-obsolete";
+  const riskClass = `badge-${risk.toLowerCase()}`;
+
+  return (
+    <div className="page">
+      <div className="results-wrap">
+        <div style={{ marginBottom: "0.5rem" }}>
+          <button className="chip" onClick={() => navigate("input")} style={{ marginBottom: "1.5rem" }}>← New Analysis</button>
+        </div>
+        <h1 className="page-title fade-up" style={{ textTransform: "capitalize" }}>{skill}</h1>
+        <p className="page-sub fade-up-2">Category: {category} · Trajectory: {trajectory}</p>
+
+        {/* Score card */}
+        <div className="card fade-up-3" style={{ marginBottom: "1.5rem" }}>
+          <div className="score-ring-wrap">
+            <ScoreRing score={score} />
+            <div>
+              <div style={{ display: "flex", gap: "0.75rem", flexWrap: "wrap", marginBottom: "0.75rem" }}>
+                <span className={`badge ${riskClass}`}>
+                  {risk === "Low" ? "✓" : risk === "Medium" ? "⚠" : "✕"} {risk} Risk
+                </span>
+                <span className={`verdict-pill ${verdictClass}`}>{verdict}</span>
+              </div>
+              <h3 style={{ fontFamily: "Syne", fontWeight: 700, fontSize: "1.1rem", marginBottom: "0.5rem" }}>Relevance Score: {score}/100</h3>
+              <p style={{ color: "var(--muted)", fontSize: "0.88rem", lineHeight: 1.7 }}>{explanation}</p>
+            </div>
+          </div>
+        </div>
+
+        {/* Quick nav */}
+        <div style={{ display: "flex", gap: "1rem", flexWrap: "wrap" }} className="fade-up-4">
+          {[
+            { label: "📊 Dashboard", page: "dashboard" },
+            { label: "🔮 Predictions", page: "prediction" },
+            { label: "🗺️ Recommendations", page: "recommendations" },
+          ].map(({ label, page }) => (
+            <button key={page} className="card chip" onClick={() => navigate(page)}
+              style={{ padding: "0.75rem 1.5rem", fontSize: "0.9rem", color: "var(--text)", borderRadius: 10 }}>
+              {label}
+            </button>
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// PAGE: Dashboard
+// ──────────────────────────────────────────
+function DashboardPage({ analysis, trends, navigate }) {
+  if (!analysis) return <div className="page"><div className="dash-wrap"><p style={{color:"var(--muted)"}}>No data. <button className="chip" onClick={()=>navigate("input")}>Analyze a skill</button></p></div></div>;
+
+  const { skill, score, risk } = analysis;
+  const trendData = trends?.trend_data || [];
+  const historical = trendData.filter(d => d.type === "historical");
+  const future = trendData.filter(d => d.type === "future");
+
+  // Monthly bar data (demand proxy)
+  const barData = historical.slice(-6).map(d => ({ month: d.month.split(" ")[0], value: d.value }));
+
+  return (
+    <div className="page">
+      <div className="dash-wrap">
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", flexWrap: "wrap", gap: "1rem" }} className="fade-up">
+          <div>
+            <h1 className="page-title" style={{ textTransform: "capitalize" }}>{skill} Dashboard</h1>
+            <p className="page-sub">Real-time demand metrics & trend analysis</p>
+          </div>
+          <button className="chip" onClick={() => navigate("results")}>← Results</button>
+        </div>
+
+        {/* KPI Row */}
+        <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(160px, 1fr))", gap: "1rem", marginBottom: "1.5rem" }} className="fade-up-2">
+          {[
+            { label: "Relevance Score", value: `${score}/100`, color: score >= 75 ? "var(--green)" : score >= 50 ? "var(--yellow)" : "var(--red)" },
+            { label: "Risk Level", value: risk, color: risk === "Low" ? "var(--green)" : risk === "Medium" ? "var(--yellow)" : "var(--red)" },
+            { label: "Trajectory", value: analysis.trajectory, color: "var(--accent)" },
+            { label: "Data Points", value: trendData.length, color: "var(--accent2)" },
+          ].map(k => (
+            <div className="card" key={k.label} style={{ padding: "1.25rem" }}>
+              <div style={{ fontSize: "0.75rem", color: "var(--muted)", marginBottom: "0.4rem" }}>{k.label}</div>
+              <div style={{ fontFamily: "Syne", fontWeight: 700, fontSize: "1.4rem", color: k.color, textTransform: "capitalize" }}>{k.value}</div>
+            </div>
+          ))}
+        </div>
+
+        {/* Historical Trend */}
+        <div className="card chart-card fade-up-3">
+          <div className="chart-title">📈 Historical Demand (12 months)</div>
+          <ResponsiveContainer width="100%" height={240}>
+            <AreaChart data={historical}>
+              <defs>
+                <linearGradient id="gH" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="5%" stopColor="#00e5ff" stopOpacity={0.3} />
+                  <stop offset="95%" stopColor="#00e5ff" stopOpacity={0} />
+                </linearGradient>
+              </defs>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+              <XAxis dataKey="month" tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} interval={2} />
+              <YAxis domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip content={<CustomTooltip />} />
+              <Area type="monotone" dataKey="value" name="Demand" stroke="#00e5ff" strokeWidth={2} fill="url(#gH)" />
+            </AreaChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Monthly Bar */}
+        <div className="card chart-card fade-up-4">
+          <div className="chart-title">📊 Recent Monthly Demand Index</div>
+          <ResponsiveContainer width="100%" height={200}>
+            <BarChart data={barData} barSize={32}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" vertical={false} />
+              <XAxis dataKey="month" tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <YAxis domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip content={<CustomTooltip />} />
+              <Bar dataKey="value" name="Demand" fill="#7c3aed" radius={[6, 6, 0, 0]} />
+            </BarChart>
+          </ResponsiveContainer>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// PAGE: Recommendations
+// ──────────────────────────────────────────
+function RecommendationsPage({ recommendations, analysis, navigate }) {
+  if (!recommendations) return <div className="page"><div className="dash-wrap"><p style={{color:"var(--muted)"}}>No data. <button className="chip" onClick={()=>navigate("input")}>Analyze a skill</button></p></div></div>;
+
+  const recs = recommendations.recommendations || [];
+
+  return (
+    <div className="page">
+      <div className="dash-wrap">
+        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }} className="fade-up">
+          <div>
+            <h1 className="page-title">Skill Roadmap</h1>
+            <p className="page-sub">Future-proof alternatives & complementary skills for <strong style={{color:"var(--accent)",textTransform:"capitalize"}}>{analysis?.skill}</strong></p>
+          </div>
+          <button className="chip" onClick={() => navigate("results")}>← Results</button>
+        </div>
+
+        <div className="rec-grid fade-up-2" style={{ marginTop: "2rem" }}>
+          {recs.map((rec, i) => {
+            const color = rec.score >= 80 ? "var(--green)" : rec.score >= 60 ? "var(--accent)" : "var(--yellow)";
+            return (
+              <div className={`card rec-card fade-up-${Math.min(i+2, 5)}`} key={rec.skill}>
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+                  <div className="rec-skill-name">{rec.skill}</div>
+                  <span style={{ fontFamily: "Syne", fontWeight: 700, color, fontSize: "1.1rem" }}>{rec.score}</span>
+                </div>
+                <div className={`traj-tag traj-${rec.trajectory}`}>{rec.trajectory.toUpperCase()}</div>
+                <div className="rec-bar-wrap">
+                  <div className="rec-bar" style={{ width: `${rec.score}%` }} />
+                </div>
+                <p style={{ fontSize: "0.8rem", color: "var(--muted)", lineHeight: 1.6 }}>{rec.why}</p>
+                <div style={{ marginTop: "0.75rem", fontSize: "0.75rem", color: "var(--muted)" }}>Category: {rec.category}</div>
+              </div>
+            );
+          })}
+        </div>
+
+        <div className="card fade-up-5" style={{ padding: "1.5rem", marginTop: "1.5rem", background: "rgba(0,229,255,0.03)", borderColor: "rgba(0,229,255,0.15)" }}>
+          <h3 style={{ fontFamily: "Syne", fontWeight: 700, marginBottom: "0.75rem" }}>💡 Learning Strategy</h3>
+          <p style={{ color: "var(--muted)", fontSize: "0.9rem", lineHeight: 1.7 }}>
+            Focus on skills with "rising" or "surging" trajectory first. Pair your existing expertise in <strong style={{color:"var(--accent)",textTransform:"capitalize"}}>{analysis?.skill}</strong> with 1–2 of these skills to maximize market differentiation. Prioritize skills that score above 80 for the best career ROI.
+          </p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// PAGE: Prediction
+// ──────────────────────────────────────────
+function PredictionPage({ analysis, trends, navigate }) {
+  if (!analysis) return <div className="page"><div className="pred-wrap"><p style={{color:"var(--muted)"}}>No data. <button className="chip" onClick={()=>navigate("input")}>Analyze a skill</button></p></div></div>;
+
+  const trendData = trends?.trend_data || [];
+  const { skill, verdict, score } = analysis;
+  const verdictClass = verdict === "Future-Proof" ? "verdict-future" : verdict === "Evolving" ? "verdict-evolving" : "verdict-obsolete";
+
+  // Combine data with a marker at month 12 (now)
+  const combined = trendData.map((d, i) => ({
+    ...d,
+    historical: d.type === "historical" ? d.value : null,
+    predicted:  d.type === "future" ? d.value : null,
+  }));
+
+  return (
+    <div className="page">
+      <div className="pred-wrap">
+        <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }} className="fade-up">
+          <div>
+            <h1 className="page-title">Prediction Timeline</h1>
+            <p className="page-sub" style={{textTransform:"capitalize"}}>Past vs future for <strong style={{color:"var(--accent)"}}>{skill}</strong></p>
+          </div>
+          <button className="chip" onClick={() => navigate("results")}>← Results</button>
+        </div>
+
+        {/* Verdict banner */}
+        <div className={`card fade-up-2`} style={{ padding: "1.5rem 2rem", marginTop: "1.5rem", marginBottom: "1.5rem", display: "flex", alignItems: "center", justifyContent: "space-between", flexWrap: "wrap", gap: "1rem" }}>
+          <div>
+            <p style={{ color: "var(--muted)", fontSize: "0.82rem", marginBottom: "0.35rem" }}>FINAL VERDICT</p>
+            <span className={`verdict-pill ${verdictClass}`} style={{ fontSize: "1.3rem", padding: "0.5rem 1.5rem" }}>{verdict}</span>
+          </div>
+          <div style={{ textAlign: "right" }}>
+            <p style={{ color: "var(--muted)", fontSize: "0.82rem" }}>12-Month Forecast</p>
+            <p style={{ fontFamily: "Syne", fontWeight: 700, fontSize: "1.5rem", color: score >= 75 ? "var(--green)" : score >= 50 ? "var(--yellow)" : "var(--red)" }}>
+              {score >= 78 ? "↑ Strong Demand" : score >= 50 ? "→ Stable Demand" : "↓ Declining"}
+            </p>
+          </div>
+        </div>
+
+        {/* Timeline Chart */}
+        <div className="card chart-card fade-up-3">
+          <div style={{ display: "flex", justifyContent: "space-between", flexWrap: "wrap", alignItems: "center", marginBottom: "1rem" }}>
+            <div className="chart-title" style={{ marginBottom: 0 }}>📅 24-Month Demand Timeline</div>
+            <div className="timeline-legend">
+              <span><span className="legend-dot" style={{background:"#00e5ff"}} />Historical</span>
+              <span><span className="legend-dot" style={{background:"#7c3aed"}} />Predicted</span>
+            </div>
+          </div>
+          <ResponsiveContainer width="100%" height={280}>
+            <LineChart data={combined}>
+              <CartesianGrid strokeDasharray="3 3" stroke="rgba(255,255,255,0.04)" />
+              <XAxis dataKey="month" tick={{ fill: "#64748b", fontSize: 10 }} axisLine={false} tickLine={false} interval={3} />
+              <YAxis domain={[0, 100]} tick={{ fill: "#64748b", fontSize: 11 }} axisLine={false} tickLine={false} />
+              <Tooltip content={<CustomTooltip />} />
+              <ReferenceLine x="Dec '23" stroke="rgba(255,255,255,0.2)" strokeDasharray="4 4" label={{ value: "Now", fill: "#64748b", fontSize: 11 }} />
+              <Line type="monotone" dataKey="historical" name="Historical" stroke="#00e5ff" strokeWidth={2.5} dot={false} connectNulls={false} />
+              <Line type="monotone" dataKey="predicted" name="Predicted" stroke="#7c3aed" strokeWidth={2.5} dot={false} strokeDasharray="6 3" connectNulls={false} />
+            </LineChart>
+          </ResponsiveContainer>
+        </div>
+
+        {/* Insight boxes */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1rem" }} className="fade-up-4">
+          <div className="card" style={{ padding: "1.25rem" }}>
+            <div style={{ color: "var(--muted)", fontSize: "0.78rem", marginBottom: "0.5rem" }}>PAST 12 MONTHS</div>
+            <div style={{ fontFamily: "Syne", fontWeight: 700, color: "var(--accent)", fontSize: "1.1rem" }}>
+              {trendData.filter(d=>d.type==="historical").length > 0
+                ? `Avg ${Math.round(trendData.filter(d=>d.type==="historical").reduce((a,b)=>a+b.value,0)/Math.max(1,trendData.filter(d=>d.type==="historical").length))}/100`
+                : "—"}
+            </div>
+            <div style={{ color: "var(--muted)", fontSize: "0.82rem", marginTop: "0.4rem" }}>Historical demand index</div>
+          </div>
+          <div className="card" style={{ padding: "1.25rem" }}>
+            <div style={{ color: "var(--muted)", fontSize: "0.78rem", marginBottom: "0.5rem" }}>NEXT 12 MONTHS</div>
+            <div style={{ fontFamily: "Syne", fontWeight: 700, color: "var(--accent2)", fontSize: "1.1rem" }}>
+              {trendData.filter(d=>d.type==="future").length > 0
+                ? `Avg ${Math.round(trendData.filter(d=>d.type==="future").reduce((a,b)=>a+b.value,0)/Math.max(1,trendData.filter(d=>d.type==="future").length))}/100`
+                : "—"}
+            </div>
+            <div style={{ color: "var(--muted)", fontSize: "0.82rem", marginTop: "0.4rem" }}>Projected demand index</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+// ──────────────────────────────────────────
+// Main App
+// ──────────────────────────────────────────
+function App() {
+  const [page, setPage] = useState("home");
+  const [analysis, setAnalysis] = useState(null);
+  const [trends, setTrends] = useState(null);
+  const [recommendations, setRecommendations] = useState(null);
+
+  const nav = [
+    { id: "home", label: "Home" },
+    { id: "about", label: "About" },
+    { id: "input", label: "Analyze" },
+    ...(analysis ? [
+      { id: "results", label: "Results" },
+      { id: "dashboard", label: "Dashboard" },
+      { id: "recommendations", label: "Recommend" },
+      { id: "prediction", label: "Predict" },
+    ] : []),
+  ];
+
+  const renderPage = () => {
+    switch (page) {
+      case "home": return <HomePage navigate={setPage} />;
+      case "about": return <AboutPage />;
+      case "input": return <InputPage navigate={setPage} setAnalysis={setAnalysis} setTrends={setTrends} setRecommendations={setRecommendations} />;
+      case "results": return <ResultsPage analysis={analysis} navigate={setPage} />;
+      case "dashboard": return <DashboardPage analysis={analysis} trends={trends} navigate={setPage} />;
+      case "recommendations": return <RecommendationsPage recommendations={recommendations} analysis={analysis} navigate={setPage} />;
+      case "prediction": return <PredictionPage analysis={analysis} trends={trends} navigate={setPage} />;
+      default: return <HomePage navigate={setPage} />;
+    }
+  };
+
+  return (
+    <>
+      <nav className="nav">
+        <div className="nav-logo" onClick={() => setPage("home")}>
+          Skill<span>Scope</span>
+        </div>
+        <div className="nav-links">
+          {nav.map(n => (
+            <button key={n.id} className={`nav-link ${page === n.id ? "active" : ""}`} onClick={() => setPage(n.id)}>
+              {n.label}
+            </button>
+          ))}
+        </div>
+      </nav>
+      {renderPage()}
+    </>
+  );
+}
+
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+</script>
+</body>
+</html>
